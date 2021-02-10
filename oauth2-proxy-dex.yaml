@@ -1,0 +1,241 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    app.kubernetes.io/name: dex
+  name: oauth2-proxy-example-dex
+stringData:
+  config.yaml: |-
+    issuer: http://dex.localtest.me
+    storage:
+      config:
+        inCluster: true
+      type: kubernetes
+    logger:
+      level: debug
+    web:
+      http: 0.0.0.0:5556
+    oauth2: 
+      alwaysShowLoginScreen: false
+      skipApprovalScreen: true
+    staticClients:
+    - id: oauth2-proxy
+      name: OAuth2 Proxy
+      redirectURIs:
+      - http://oauth2-proxy.localtest.me/oauth2/callback
+      secret: b2F1dGgyLXByb3h5LWNsaWVudC1zZWNyZXQK
+    enablePasswordDB: true
+    staticPasswords:
+    - email: admin@example.com
+      hash: $2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W
+      userID: 08a8684b-db88-4b73-90a9-3cd1661f5466
+      username: admin
+    expiry:
+      idTokens: 1h
+      signingKeys: 4h
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  labels:
+    app: oauth2-proxy-sample
+  name: oauth2-proxy-example-oauth2-proxy-sample
+data:
+  oauth2_proxy.cfg: "cookie_secret=\"OQINaROshtE9TcZkNAm-5Zs2Pv3xaWytBmc5W7sPX7w=\"\ncookie_domain=\".localtest.me\"\nwhitelist_domains=[\".localtest.me\"]\n# only users with this domain will be let in\nemail_domains=[\"example.com\"]\n\nclient_id=\"oauth2-proxy\"\nclient_secret=\"b2F1dGgyLXByb3h5LWNsaWVudC1zZWNyZXQK\"\ncookie_secure=\"false\"\n\nredirect_url=\"http://oauth2-proxy.localtest.me/oauth2/callback\"\n\n# we don't want to proxy anything so pick a non-existent directory\nupstreams = [ \"file:///dev/null\" ]\n\n# return authenticated user to nginx\nset_xauthrequest = true\n# using http://dex.localtest.me/.well-known/openid-configuration oauth2-proxy will populate\n# login_url, redeem_url, and oidc_jwks_url\nprovider=\"oidc\"\noidc_issuer_url=\"http://dex.localtest.me\""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy-example-dex
+  labels:
+    app.kubernetes.io/name: dex
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+  - name: http
+    targetPort: http
+    port: 32000
+  selector:
+    app.kubernetes.io/name: dex
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: oauth2-proxy-sample
+  name: oauth2-proxy-example-oauth2-proxy-sample
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: oauth2-proxy-sample
+    release: oauth2-proxy-example
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy-example-dex
+  labels:
+    app.kubernetes.io/name: dex
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dex
+      app.kubernetes.io/instance: oauth2-proxy-example
+      app.kubernetes.io/component: dex
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dex
+        app.kubernetes.io/instance: oauth2-proxy-example
+        app.kubernetes.io/component: dex
+      annotations:
+        checksum/config: 185f32cfabdf4f7467868dc301d4bd33e68951e12eddeb69f23ebc1d0f91ba28
+    spec:
+      containers:
+      - name: main
+        image: "quay.io/dexidp/dex:v2.23.0"
+        imagePullPolicy: IfNotPresent
+        command:
+        - /usr/local/bin/dex
+        - serve
+        - /etc/dex/cfg/config.yaml
+        ports:
+        - name: http
+          containerPort: 5556
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 1
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 1
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 1
+          periodSeconds: 10
+          timeoutSeconds: 1
+          failureThreshold: 1
+        env:
+          []
+        volumeMounts:
+        - mountPath: /etc/dex/cfg
+          name: config
+      volumes:
+      - secret:
+          defaultMode: 420
+          items:
+          - key: config.yaml
+            path: config.yaml
+          secretName: oauth2-proxy-example-dex
+        name: config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: oauth2-proxy-sample
+  name: oauth2-proxy-example-oauth2-proxy-sample
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth2-proxy-sample
+      release: oauth2-proxy-example
+  template:
+    metadata:
+      annotations:
+        checksum/config: 5d8892a7b1d9eb03f9d59b787ce339b374fa2be51991e4e7533cb0a541984fac
+        checksum/config-emails: 01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b
+        checksum/secret: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        checksum/google-secret: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+      labels:
+        app: oauth2-proxy-sample
+        release: "oauth2-proxy-example"
+    spec:
+      containers:
+      - name: oauth2-proxy
+        image: "quay.io/pusher/oauth2_proxy:v5.1.0"
+        imagePullPolicy: IfNotPresent
+        args:
+          - --http-address=0.0.0.0:4180
+          - --config=/etc/oauth2_proxy/oauth2_proxy.cfg
+        ports:
+          - containerPort: 4180
+            name: http
+            protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 0
+          timeoutSeconds: 1
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 0
+          timeoutSeconds: 1
+          successThreshold: 1
+          periodSeconds: 10
+        volumeMounts:
+        - mountPath: /etc/oauth2_proxy
+          name: configmain
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: oauth2-proxy-example-oauth2-proxy-sample
+        name: configmain
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: oauth2-proxy-example-dex
+  labels:
+    app.kubernetes.io/name: dex
+spec:
+  rules:
+    - host: "dex.localtest.me"
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: oauth2-proxy-example-dex
+              servicePort: 32000
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  labels:
+    app: oauth2-proxy-sample
+  name: oauth2-proxy-example-oauth2-proxy-sample
+  annotations:
+    nginx.ingress.kubernetes.io/server-snippet: |
+      large_client_header_buffers 4 32k;
+spec:
+  rules:
+    - host: oauth2-proxy.localtest.me
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: oauth2-proxy-example-oauth2-proxy-sample
+              servicePort: 80
+
