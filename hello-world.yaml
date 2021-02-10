@@ -54,10 +54,10 @@ metadata:
   name: example-ingress
 spec:
   rules:
-    - host: hello-world.localhost
+    - host: localhost
       http:
         paths:
-          - path: /
+          - path: /hello-world
             backend:
               serviceName: hello-world-service
               servicePort: 9080
