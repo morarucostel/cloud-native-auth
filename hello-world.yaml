@@ -1,26 +1,52 @@
-kind: Pod
-apiVersion: v1
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: foo-app
+  name: hello-world
   labels:
-    app: foo
+    app.kubernetes.io/name: hello-world
 spec:
-  containers:
-  - name: foo-app
-    image: hashicorp/http-echo:0.2.3
-    args:
-    - "-text=foo"
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hello-world
+      app.kubernetes.io/instance: oauth2-proxy-example
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hello-world
+        app.kubernetes.io/instance: oauth2-proxy-example
+    spec:
+      containers:
+        - name: hello-world
+          image: "conservis/hello-world:1.0.0"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
 ---
 kind: Service
 apiVersion: v1
 metadata:
-  name: foo-service
+  name: hello-world-service
 spec:
-  selector:
-    app: foo
+  type: ClusterIP
   ports:
-  # Default port used by the image
-  - port: 5678
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: oauth2-proxy-sample
+    release: oauth2-proxy-example
 ---
 apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
@@ -28,10 +54,11 @@ metadata:
   name: example-ingress
 spec:
   rules:
-  - http:
-      paths:
-      - path: /foo
-        backend:
-          serviceName: foo-service
-          servicePort: 5678
+    - host: hello-world.localhost
+      http:
+        paths:
+          - path: /
+            backend:
+              serviceName: hello-world-service
+              servicePort: 9080
 ---
