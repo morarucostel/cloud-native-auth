@@ -40,13 +40,13 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - port: 80
+    - port: 9080
       targetPort: http
       protocol: TCP
       name: http
   selector:
-    app: oauth2-proxy-sample
-    release: oauth2-proxy-example
+    app.kubernetes.io/name: hello-world
+    app.kubernetes.io/instance: oauth2-proxy-example
 ---
 apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
