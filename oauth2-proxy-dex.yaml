@@ -2,54 +2,25 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
-    app.kubernetes.io/name: dex
-  name: oauth2-proxy-example-dex
+    app.kubernetes.io/name: dexidp
+  name: dexidp-sa
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   labels:
-    app: oauth2-proxy-sample
-  name: oauth2-proxy-example-oauth2-proxy-sample
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  labels:
-    app.kubernetes.io/name: dex
-  name: oauth2-proxy-example-dex
-rules:
-- apiGroups: ["dex.coreos.com"] # API group created by dex
-  resources: ["*"]
-  verbs: ["*"]
-- apiGroups: ["apiextensions.k8s.io"]
-  resources: ["customresourcedefinitions"]
-  verbs: ["create"] # To manage its own resources, dex must be able to create customresourcedefinitions
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  labels:
-    app.kubernetes.io/name: dex
-  name: oauth2-proxy-example-dex
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: oauth2-proxy-example-dex
-subjects:
-  - kind: ServiceAccount
-    name: oauth2-proxy-example-dex
-    namespace: default
+    app: oauth2-proxy
+  name: oauth2-proxy-sa
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   labels:
-    app.kubernetes.io/name: dex
-  name: oauth2-proxy-example-dex
+    app.kubernetes.io/name: dexidp
+  name: dexidp-secret
 stringData:
   config.yaml: |-
-    issuer: http://dex.localhost
+    issuer: http://dex.localtest.me
     storage:
       config:
         inCluster: true
@@ -65,7 +36,7 @@ stringData:
     - id: oauth2-proxy
       name: OAuth2 Proxy
       redirectURIs:
-      - http://oauth2-proxy.localhost/oauth2/callback
+      - http://oauth2-proxy.localtest.me/oauth2/callback
       secret: b2F1dGgyLXByb3h5LWNsaWVudC1zZWNyZXQK
     enablePasswordDB: true
     staticPasswords:
@@ -77,21 +48,51 @@ stringData:
       idTokens: 1h
       signingKeys: 4h
 ---
+# Source: kubernetes/charts/oauth2-proxy/templates/configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   labels:
-    app: oauth2-proxy-sample
-  name: oauth2-proxy-example-oauth2-proxy-sample
+    app: oauth2-proxy
+  name: oauth2-proxy-config
 data:
-  oauth2_proxy.cfg: "cookie_secret=\"OQINaROshtE9TcZkNAm-5Zs2Pv3xaWytBmc5W7sPX7w=\"\ncookie_domain=\".localhost\"\nwhitelist_domains=[\".localhost\"]\n# only users with this domain will be let in\nemail_domains=[\"example.com\"]\n\nclient_id=\"oauth2-proxy\"\nclient_secret=\"b2F1dGgyLXByb3h5LWNsaWVudC1zZWNyZXQK\"\ncookie_secure=\"false\"\n\nredirect_url=\"http://oauth2-proxy.localhost/oauth2/callback\"\n\n# we don't want to proxy anything so pick a non-existent directory\nupstreams = [ \"file:///dev/null\" ]\n\n# return authenticated user to nginx\nset_xauthrequest = true\n# using http://dex.localhost/.well-known/openid-configuration oauth2-proxy will populate\n# login_url, redeem_url, and oidc_jwks_url\nprovider=\"oidc\"\noidc_issuer_url=\"http://dex.localhost\""
+  oauth2_proxy.cfg: "cookie_secret=\"OQINaROshtE9TcZkNAm-5Zs2Pv3xaWytBmc5W7sPX7w=\"\ncookie_domain=\".localtest.me\"\nwhitelist_domains=[\".localtest.me\"]\n# only users with this domain will be let in\nemail_domains=[\"example.com\"]\n\nclient_id=\"oauth2-proxy\"\nclient_secret=\"b2F1dGgyLXByb3h5LWNsaWVudC1zZWNyZXQK\"\ncookie_secure=\"false\"\n\nredirect_url=\"http://oauth2-proxy.localtest.me/oauth2/callback\"\n\n# we don't want to proxy anything so pick a non-existent directory\nupstreams = [ \"file:///dev/null\" ]\n\n# return authenticated user to nginx\nset_xauthrequest = true\n# using http://dex.localtest.me/.well-known/openid-configuration oauth2-proxy will populate\n# login_url, redeem_url, and oidc_jwks_url\nprovider=\"oidc\"\noidc_issuer_url=\"http://dex.localtest.me\""
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: dexidp
+  name: dexidp-cr
+rules:
+- apiGroups: ["dex.coreos.com"] # API group created by dex
+  resources: ["*"]
+  verbs: ["*"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["create"] # To manage its own resources, dex must be able to create customresourcedefinitions
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: dex
+  name: dexidp-crb
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dexidp-cr
+subjects:
+  - kind: ServiceAccount
+    name: dexidp-sa
+    namespace: default
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: oauth2-proxy-example-dex
+  name: dexidp-service
   labels:
-    app.kubernetes.io/name: dex
+    app.kubernetes.io/name: dexidp
 spec:
   type: ClusterIP
   sessionAffinity: None
@@ -100,14 +101,15 @@ spec:
     targetPort: http
     port: 32000
   selector:
-    app.kubernetes.io/name: dex
+    app.kubernetes.io/name: dexidp
+    app.kubernetes.io/instance: auth-example
 ---
 apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app: oauth2-proxy-sample
-  name: oauth2-proxy-example-oauth2-proxy-sample
+    app: oauth2-proxy
+  name: oauth2-proxy-service
 spec:
   type: ClusterIP
   ports:
@@ -116,15 +118,15 @@ spec:
       protocol: TCP
       name: http
   selector:
-    app: oauth2-proxy-sample
+    app: oauth2-proxy
     release: oauth2-proxy-example
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: oauth2-proxy-example-dex
+  name: dexidp
   labels:
-    app.kubernetes.io/name: dex
+    app.kubernetes.io/name: dexidp
 spec:
   replicas: 1
   strategy:
@@ -134,19 +136,19 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app.kubernetes.io/name: dex
-      app.kubernetes.io/instance: oauth2-proxy-example
-      app.kubernetes.io/component: dex
+      app.kubernetes.io/name: dexidp
+      app.kubernetes.io/instance: auth-example
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: dex
-        app.kubernetes.io/instance: oauth2-proxy-example
-        app.kubernetes.io/component: dex
+        app.kubernetes.io/name: dexidp
+        app.kubernetes.io/instance: auth-example
       annotations:
         checksum/config: 185f32cfabdf4f7467868dc301d4bd33e68951e12eddeb69f23ebc1d0f91ba28
     spec:
-      serviceAccountName: oauth2-proxy-example-dex
+      serviceAccountName: dexidp-sa
+      nodeSelector:
+          {}
       containers:
       - name: main
         image: "quay.io/dexidp/dex:v2.23.0"
@@ -155,6 +157,8 @@ spec:
         - /usr/local/bin/dex
         - serve
         - /etc/dex/cfg/config.yaml
+        resources:
+          null
         ports:
         - name: http
           containerPort: 5556
@@ -186,20 +190,20 @@ spec:
           items:
           - key: config.yaml
             path: config.yaml
-          secretName: oauth2-proxy-example-dex
+          secretName: dexidp-secret
         name: config
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: oauth2-proxy-sample
-  name: oauth2-proxy-example-oauth2-proxy-sample
+    app: oauth2-proxy
+  name: oauth2-proxy
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: oauth2-proxy-sample
+      app: oauth2-proxy
       release: oauth2-proxy-example
   template:
     metadata:
@@ -209,10 +213,10 @@ spec:
         checksum/secret: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
         checksum/google-secret: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
       labels:
-        app: oauth2-proxy-sample
-        release: "oauth2-proxy-example"
+        app: oauth2-proxy
+        release: oauth2-proxy-example
     spec:
-      serviceAccountName: oauth2-proxy-example-oauth2-proxy-sample
+      serviceAccountName: oauth2-proxy-sa
       containers:
       - name: oauth2-proxy
         image: "quay.io/pusher/oauth2_proxy:v5.1.0"
@@ -240,47 +244,51 @@ spec:
           timeoutSeconds: 1
           successThreshold: 1
           periodSeconds: 10
+        resources:
+          {}
         volumeMounts:
         - mountPath: /etc/oauth2_proxy
           name: configmain
       volumes:
       - configMap:
           defaultMode: 420
-          name: oauth2-proxy-example-oauth2-proxy-sample
+          name: oauth2-proxy-config
         name: configmain
+      tolerations:
+        []
 ---
+# Source: kubernetes/charts/dex/templates/ingress.yaml
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
-  name: oauth2-proxy-example-dex
+  name: dexidp-ingress
   labels:
-    app.kubernetes.io/name: dex
+    app.kubernetes.io/name: dexidp
 spec:
   rules:
-    - host: "dex.localhost"
+    - host: "dex.localtest.me"
       http:
         paths:
           - path: /
             backend:
-              serviceName: oauth2-proxy-example-dex
+              serviceName: dexidp-service
               servicePort: 32000
 ---
 apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   labels:
-    app: oauth2-proxy-sample
-  name: oauth2-proxy-example-oauth2-proxy-sample
+    app: oauth2-proxy
+  name: oauth2-proxy-ingress
   annotations:
     nginx.ingress.kubernetes.io/server-snippet: |
       large_client_header_buffers 4 32k;
 spec:
   rules:
-    - host: "oauth2-proxy.localhost"
+    - host: oauth2-proxy.localtest.me
       http:
         paths:
           - path: /
             backend:
-              serviceName: oauth2-proxy-example-oauth2-proxy-sample
+              serviceName: oauth2-proxy-service
               servicePort: 80
-
