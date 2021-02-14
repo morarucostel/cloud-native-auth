@@ -4,7 +4,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/auth-response-headers: X-Auth-Request-User,X-Auth-Request-Email
     nginx.ingress.kubernetes.io/auth-signin: http://oauth2-proxy.localtest.me/oauth2/start
-    nginx.ingress.kubernetes.io/auth-url: http://oauth2-proxy-example-oauth2-proxy-sample.default.svc.cluster.local/oauth2/auth
+    nginx.ingress.kubernetes.io/auth-url: http://oauth2-proxy-service.default.svc.cluster.local/oauth2/auth
   name: example-ingress
   namespace: default
 spec:
