@@ -9,11 +9,11 @@ metadata:
   namespace: default
 spec:
   rules:
-  - host: localhost
+  - host: hello-world.localtest.me
     http:
       paths:
       - backend:
           serviceName: hello-world-service
           servicePort: 9080
-        path: /hello-world
+        path: /
         pathType: ImplementationSpecific
